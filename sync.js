@@ -133,9 +133,48 @@ function initTokenClient() {
   return true;
 }
 
+// En la app instalada (pantalla completa) la ventana emergente de Google no siempre
+// devuelve la sesión, así que ahí se usa el inicio de sesión por redirección
+function isInstalledApp() {
+  return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+}
+
+function signInWithRedirect() {
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  localStorage.setItem('apitrack_oauth_state', state);
+  const user = savedUser();
+  const params = new URLSearchParams({
+    client_id: googleClientId(),
+    redirect_uri: location.origin + location.pathname.replace(/index\.html$/, ''),
+    response_type: 'token',
+    scope: DRIVE_SCOPES,
+    include_granted_scopes: 'true',
+    state
+  });
+  if (user && user.email) params.set('login_hint', user.email);
+  else params.set('prompt', 'select_account');
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+}
+
+// Al volver de Google por redirección, el token llega en la dirección (#access_token=...)
+function consumeRedirectToken() {
+  if (!location.hash || location.hash.indexOf('access_token=') === -1 && location.hash.indexOf('error=') === -1) return null;
+  const h = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, '', location.pathname + location.search);
+  const expected = localStorage.getItem('apitrack_oauth_state');
+  localStorage.removeItem('apitrack_oauth_state');
+  if (!expected || h.get('state') !== expected) return null;
+  if (h.get('error')) return { error: h.get('error') };
+  return { access_token: h.get('access_token'), expires_in: h.get('expires_in') };
+}
+
 function signInWithGoogle() {
   if (!googleClientId()) {
     showToast('Falta configurar el ID de cliente de Google (config.js)', 'error');
+    return;
+  }
+  if (isInstalledApp()) {
+    signInWithRedirect();
     return;
   }
   if (!initTokenClient()) {
@@ -162,6 +201,8 @@ async function onTokenResponse(resp) {
     localStorage.setItem(SYNC_KEYS.USER, JSON.stringify({ email: info.email, name: info.name, picture: info.picture }));
   } catch (e) {
     console.warn('userinfo', e);
+    // Aunque falle la foto y el nombre, la sesión sí quedó iniciada
+    if (!savedUser()) localStorage.setItem(SYNC_KEYS.USER, JSON.stringify({ email: '', name: 'Cuenta de Google' }));
   }
   localStorage.setItem(SYNC_KEYS.ENABLED, '1');
   renderAccount();
@@ -450,6 +491,7 @@ async function migrateLegacyIds() {
 
 // ----- Arranque -----
 async function startSync() {
+  const redirected = consumeRedirectToken();
   try { await migrateLegacyIds(); } catch (e) { console.warn('Migración de ids', e); }
   el('googleSignInBtn').addEventListener('click', signInWithGoogle);
   el('accountChip').addEventListener('click', (e) => {
@@ -470,4 +512,5 @@ async function startSync() {
   setInterval(() => { if (SYNC.token && document.visibilityState === 'visible') syncNow(); }, 45000);
 
   renderAccount();
+  if (redirected) onTokenResponse(redirected);
 }
