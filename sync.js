@@ -24,7 +24,29 @@ const SYNC_KEYS = {
   DELETED: 'apitrack_deleted',
   CLIENT_ID: 'apitrack_google_client_id'
 };
-const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata openid email profile';
+
+// ----- Espacio de datos: personal (carpeta oculta de tu Drive) o compartido (carpeta de Drive compartida) -----
+function currentSpace() {
+  try { return JSON.parse(localStorage.getItem('apitrack_space') || 'null') || { mode: 'personal' }; } catch (e) { return { mode: 'personal' }; }
+}
+function inShared() {
+  const s = currentSpace();
+  return s.mode === 'shared' && !!s.folderId;
+}
+function setSpace(space) {
+  localStorage.setItem('apitrack_space', JSON.stringify(space));
+  SYNC.fileId = null;
+  SYNC.photoFiles = null;
+}
+function spaceQuery(cond) {
+  if (inShared()) {
+    const q = `'${currentSpace().folderId}' in parents and trashed=false and ${cond}`;
+    return `q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  }
+  return `spaces=appDataFolder&q=${encodeURIComponent(cond)}`;
+}
+function spaceParent() { return inShared() ? currentSpace().folderId : 'appDataFolder'; }
 const DATA_FILE_NAME = 'apitrack-data.json';
 const PHOTO_PREFIX = 'foto-';
 const PHOTO_REF = 'drive-foto:';
@@ -207,7 +229,8 @@ async function onTokenResponse(resp) {
   localStorage.setItem(SYNC_KEYS.ENABLED, '1');
   renderAccount();
   showToast('Sesión iniciada. Sincronizando con Google Drive…', 'info');
-  syncNow();
+  await syncNow();
+  if (typeof checkSharedInvites === 'function') checkSharedInvites();
 }
 
 function signOutGoogle() {
@@ -232,30 +255,36 @@ async function driveFetch(url, opts = {}) {
     throw new Error('auth');
   }
   const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${SYNC.token}` } });
-  if (r.status === 401 || r.status === 403) {
+  if (r.status === 401) {
     SYNC.token = null;
     throw new Error('auth');
   }
-  if (!r.ok) throw new Error(`drive ${r.status}`);
+  if (r.status === 403) {
+    // Puede ser un permiso que falta en la sesión (hay que reconectar) o un archivo sin acceso
+    let reason = '';
+    try { const j = await r.clone().json(); reason = ((j.error && j.error.errors && j.error.errors[0]) || {}).reason || ''; } catch (e) {}
+    if (/scope|auth/i.test(reason)) { SYNC.token = null; throw new Error('auth'); }
+    const err = new Error('forbidden'); err.status = 403; throw err;
+  }
+  if (!r.ok) { const err = new Error(`drive ${r.status}`); err.status = r.status; throw err; }
   return r;
 }
 
 async function findDataFile() {
-  const q = encodeURIComponent(`name='${DATA_FILE_NAME}'`);
-  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,modifiedTime)`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?${spaceQuery(`name='${DATA_FILE_NAME}'`)}&orderBy=createdTime&fields=files(id,modifiedTime,version)`);
   const j = await r.json();
   return (j.files && j.files[0]) || null;
 }
 
 async function driveUpload(name, blob, existingId = null) {
   if (existingId) {
-    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`, { method: 'PATCH', body: blob });
+    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&supportsAllDrives=true`, { method: 'PATCH', body: blob });
     return existingId;
   }
   const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify({ name, parents: ['appDataFolder'] })], { type: 'application/json' }));
+  form.append('metadata', new Blob([JSON.stringify({ name, parents: [spaceParent()] })], { type: 'application/json' }));
   form.append('file', blob);
-  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', body: form });
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id', { method: 'POST', body: form });
   return (await r.json()).id;
 }
 
@@ -263,8 +292,7 @@ async function listDrivePhotos() {
   const map = new Map();
   let pageToken = '';
   do {
-    const q = encodeURIComponent(`name contains '${PHOTO_PREFIX}'`);
-    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&pageSize=1000&fields=nextPageToken,files(id,name)${pageToken ? `&pageToken=${pageToken}` : ''}`);
+    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?${spaceQuery(`name contains '${PHOTO_PREFIX}'`)}&pageSize=1000&fields=nextPageToken,files(id,name)${pageToken ? `&pageToken=${pageToken}` : ''}`);
     const j = await r.json();
     (j.files || []).forEach(f => map.set(f.name.slice(PHOTO_PREFIX.length), f.id));
     pageToken = j.nextPageToken || '';
@@ -392,16 +420,18 @@ async function syncNow() {
   setSyncStatus('syncing');
   try {
     const gen = SYNC.gen;
+    if (inShared() && typeof checkSharedFolder === 'function' && !(await checkSharedFolder())) return;
     const file = await findDataFile();
     SYNC.fileId = file ? file.id : null;
-    const remote = file ? await (await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`)).json() : null;
+    const remote = file ? await (await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`)).json() : null;
     const { payload: local, photos } = await readLocal();
 
     let result = local;
     if (remote) {
       if (lastSyncedAt() === 0 && countRecords(local) > 0 && countRecords(remote) > 0) {
         // Primera vez en este dispositivo y ya hay datos en Drive: nunca se pisa nada sin preguntar
-        const useDrive = confirm('Ya tienes datos de ApiTrack en tu Google Drive.\n\nAceptar: usar los datos de Drive en este dispositivo (lo que hay aquí se reemplaza).\nCancelar: combinar Drive con lo que hay en este dispositivo (no se pierde nada).');
+        const where = inShared() ? `la carpeta compartida "${currentSpace().folderName || 'ApiTrack'}"` : 'tu Google Drive';
+        const useDrive = confirm(`Ya hay datos de ApiTrack en ${where}.\n\nAceptar: usar esos datos en este dispositivo (lo que hay aquí se reemplaza).\nCancelar: combinar esos datos con lo que hay en este dispositivo (no se pierde nada).`);
         result = useDrive ? remote : mergePayloads(local, remote);
       } else {
         result = mergePayloads(local, remote);
@@ -412,7 +442,7 @@ async function syncNow() {
     if (!SYNC.photoFiles) SYNC.photoFiles = await listDrivePhotos();
     for (const h of referencedPhotos(result)) {
       if (!photos.has(h) && SYNC.photoFiles.has(h)) {
-        const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${SYNC.photoFiles.get(h)}?alt=media`);
+        const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${SYNC.photoFiles.get(h)}?alt=media&supportsAllDrives=true`);
         photos.set(h, await r.text());
       }
     }
@@ -431,6 +461,11 @@ async function syncNow() {
     }
 
     if (!remote || !sameStores(result, remote) || JSON.stringify(result.deleted || {}) !== JSON.stringify(remote.deleted || {})) {
+      // Si otra persona guardó mientras tanto, se vuelve a combinar antes de subir para no pisar su cambio
+      if (file) {
+        const now = await (await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?fields=version&supportsAllDrives=true`)).json();
+        if (String(now.version) !== String(file.version)) { SYNC.again = true; return; }
+      }
       const data = { ...result, savedAt: Date.now() };
       SYNC.fileId = await driveUpload(DATA_FILE_NAME, new Blob([JSON.stringify(data)], { type: 'application/json' }), SYNC.fileId);
     }
@@ -440,6 +475,7 @@ async function syncNow() {
   } catch (err) {
     console.warn('Sincronización', err);
     if (err.message === 'auth') setSyncStatus(isDirty() ? 'pending' : 'expired');
+    else if (err.message === 'forbidden' && inShared()) setSyncStatus('error');
     else setSyncStatus(navigator.onLine ? 'error' : 'offline');
   } finally {
     SYNC.busy = false;
@@ -509,7 +545,15 @@ async function startSync() {
     if (document.visibilityState === 'visible' && SYNC.token) syncNow();
   });
   window.addEventListener('online', () => { if (SYNC.token) syncNow(); });
-  setInterval(() => { if (SYNC.token && document.visibilityState === 'visible') syncNow(); }, 45000);
+  // Con datos compartidos se revisan los cambios de los demás cada 15 segundos; si no, cada 45
+  let lastPoll = 0;
+  setInterval(() => {
+    if (!SYNC.token || document.visibilityState !== 'visible') return;
+    if (Date.now() - lastPoll < (inShared() ? 15000 : 45000)) return;
+    lastPoll = Date.now();
+    syncNow();
+  }, 5000);
+  if (typeof setupSharing === 'function') setupSharing();
 
   renderAccount();
   if (redirected) onTokenResponse(redirected);
