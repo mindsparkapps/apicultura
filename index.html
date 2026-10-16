@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="ApiTrack - Aplicación completa de gestión apícola. Controla cosechas, ventas y colmenas.">
+  <meta name="theme-color" content="#f5a623">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>ApiTrack - Gestión Apícola</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
+</head>
+<body>
+
+  <!-- Install Banner -->
+  <div class="install-banner" id="installBanner">
+    <span>📲 Instala ApiTrack en tu dispositivo</span>
+    <button onclick="installPWA()">Instalar</button>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Photo Viewer -->
+  <div class="photo-viewer" id="photoViewer" onclick="closePhotoViewer()">
+    <button class="close-btn" onclick="closePhotoViewer()">✕</button>
+    <img id="photoViewerImg" src="" alt="Foto">
+  </div>
+
+  <div class="app-layout">
+    <!-- Sidebar Overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <div class="logo-icon">🐝</div>
+          <div class="logo-text">
+            <h1>ApiTrack</h1>
+            <span>Gestión Apícola</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Principal</div>
+        <div class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
+          <span class="icon">📊</span>
+          <span>Dashboard</span>
+        </div>
+
+        <div class="nav-section-title">Producción</div>
+        <div class="nav-item" data-page="apiarios" onclick="navigateTo('apiarios')">
+          <span class="icon">🏡</span>
+          <span>Apiarios</span>
+          <span class="nav-badge" id="apiarioCount">0</span>
+        </div>
+        <div class="nav-item" data-page="cosechas" onclick="navigateTo('cosechas')">
+          <span class="icon">🍯</span>
+          <span>Cosechas</span>
+        </div>
+
+        <div class="nav-section-title">Comercial</div>
+        <div class="nav-item" data-page="ventas" onclick="navigateTo('ventas')">
+          <span class="icon">💰</span>
+          <span>Ventas</span>
+        </div>
+        <div class="nav-item" data-page="clientes" onclick="navigateTo('clientes')">
+          <span class="icon">👥</span>
+          <span>Clientes</span>
+        </div>
+
+        <div class="nav-section-title">Multimedia</div>
+        <div class="nav-item" data-page="galeria" onclick="navigateTo('galeria')">
+          <span class="icon">📸</span>
+          <span>Galería</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-footer-btn" onclick="exportData()">
+          <span>📥</span>
+          <span>Exportar Datos (JSON)</span>
+        </button>
+        <button class="sidebar-footer-btn" onclick="document.getElementById('importFileInput').click()" style="margin-top:6px;">
+          <span>📤</span>
+          <span>Importar Respaldo</span>
+        </button>
+        <button class="sidebar-footer-btn" onclick="seedDemoData(true)" style="margin-top:6px;border-color:rgba(245,166,35,0.4);color:var(--accent-gold);">
+          <span>🔄</span>
+          <span>Cargar Datos Demo</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="main-header">
+        <div class="header-left">
+          <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+          <h2 class="page-title" id="pageTitle">Dashboard</h2>
+        </div>
+        <div class="header-right">
+          <div class="account-area" id="accountArea">
+            <button class="google-signin-btn" id="googleSignInBtn" title="Inicia sesión para sincronizar con Google Drive">
+              <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+              <span class="google-signin-text">Iniciar sesión</span>
+            </button>
+            <button class="account-chip" id="accountChip" hidden>
+              <span class="account-avatar" id="accountAvatar"></span>
+              <span class="sync-dot" id="syncDot" data-status="off"></span>
+            </button>
+            <div class="account-menu" id="accountMenu" hidden>
+              <div class="account-menu-name" id="accountName"></div>
+              <div class="account-menu-email" id="accountEmail"></div>
+              <div class="account-menu-status" id="syncStatusText"></div>
+              <button class="account-menu-btn" id="syncNowBtn">🔄 Sincronizar ahora</button>
+              <button class="account-menu-btn danger" id="signOutBtn">↩ Cerrar sesión</button>
+            </div>
+          </div>
+          <button class="header-btn" onclick="openCamera()" title="Cámara">
+            📷
+          </button>
+          <button class="header-btn" title="Notificaciones">
+            🔔
+            <span class="notif-dot"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ========== DASHBOARD ========== -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-content">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon gold">🏡</div>
+                <span class="stat-trend up" id="trendApiarios">↑ Nuevo</span>
+              </div>
+              <div class="stat-value" id="statApiarios">0</div>
+              <div class="stat-label">Apiarios Activos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon green">🍯</div>
+                <span class="stat-trend up">↑ Temporada</span>
+              </div>
+              <div class="stat-value" id="statProduccion">0 kg</div>
+              <div class="stat-label">Producción Total</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon blue">💰</div>
+                <span class="stat-trend up" id="trendVentas">+0%</span>
+              </div>
+              <div class="stat-value" id="statVentas">$0</div>
+              <div class="stat-label">Ventas del Mes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon red">📸</div>
+              </div>
+              <div class="stat-value" id="statFotos">0</div>
+              <div class="stat-label">Fotos Registradas</div>
+            </div>
+          </div>
+
+          <!-- Balance de Inventario (Cosechado vs Vendido) -->
+          <div class="section-card" style="margin-bottom: 24px;">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">📦</span>
+                Balance de Stock e Inventario (Cosechas vs Ventas)
+              </div>
+              <div style="font-size:0.78rem;color:var(--text-muted);">
+                Calculado en tiempo real según cosechas registradas y ventas realizadas
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Total Cosechado</th>
+                    <th>Total Vendido</th>
+                    <th>Stock Disponible</th>
+                    <th>Estado de Stock</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryStockTable">
+                  <!-- Dynamically rendered -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="quick-row">
+            <div class="section-card">
+              <div class="section-header">
+                <div class="section-title">
+                  <span class="icon">📈</span>
+                  Producción Mensual (kg)
+                </div>
+              </div>
+              <div class="chart-container">
+                <div class="chart-bar-group" id="chartProduccion"></div>
+              </div>
+            </div>
+            <div class="section-card">
+              <div class="section-header">
+                <div class="section-title">
+                  <span class="icon">💵</span>
+                  Ventas Mensuales ($)
+                </div>
+              </div>
+              <div class="chart-container">
+                <div class="chart-bar-group" id="chartVentas"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">🕐</span>
+                Últimas Actividades
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Descripción</th>
+                    <th>Valor</th>
+                  </tr>
+                </thead>
+                <tbody id="recentActivity">
+                  <tr>
+                    <td colspan="4" class="empty-state">
+                      <div class="icon">📋</div>
+                      <p>No hay actividades recientes</p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== APIARIOS ========== -->
+      <div class="page" id="page-apiarios">
+        <div class="page-content">
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">🏡</span>
+                Mis Apiarios
+              </div>
+              <div class="section-actions">
+                <div class="search-box">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" placeholder="Buscar apiario..." oninput="filterTable('apiarios', this.value)">
+                </div>
+                <button class="btn btn-primary" onclick="openModal('apiarioModal')">
+                  <span>+</span> Nuevo Apiario
+                </button>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Foto</th>
+                    <th>Nombre</th>
+                    <th>Ubicación</th>
+                    <th>Colmenas</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="apiarioTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== COSECHAS ========== -->
+      <div class="page" id="page-cosechas">
+        <div class="page-content">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon gold">🍯</div>
+              </div>
+              <div class="stat-value" id="cosechaTotal">0 kg</div>
+              <div class="stat-label">Total Cosechado</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon green">📅</div>
+              </div>
+              <div class="stat-value" id="cosechaMes">0 kg</div>
+              <div class="stat-label">Este Mes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon blue">⚖️</div>
+              </div>
+              <div class="stat-value" id="cosechaPromedio">0 kg</div>
+              <div class="stat-label">Promedio por Cosecha</div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">🍯</span>
+                Registro de Cosechas
+              </div>
+              <div class="section-actions">
+                <div class="search-box">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" placeholder="Buscar cosecha..." oninput="filterTable('cosechas', this.value)">
+                </div>
+                <button class="btn btn-primary" onclick="openModal('cosechaModal')">
+                  <span>+</span> Nueva Cosecha
+                </button>
+              </div>
+            </div>
+            <div class="filter-chips">
+              <button class="filter-chip active" onclick="filterCosechas('todas', this)">Todas</button>
+              <button class="filter-chip" onclick="filterCosechas('miel', this)">🍯 Miel</button>
+              <button class="filter-chip" onclick="filterCosechas('cera', this)">🕯️ Cera</button>
+              <button class="filter-chip" onclick="filterCosechas('polen', this)">🌼 Polen</button>
+              <button class="filter-chip" onclick="filterCosechas('propoleo', this)">💊 Propóleo</button>
+              <button class="filter-chip" onclick="filterCosechas('jalea', this)">👑 Jalea Real</button>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Foto</th>
+                    <th>Fecha</th>
+                    <th>Apiario</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Calidad</th>
+                    <th>Notas</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="cosechaTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== VENTAS ========== -->
+      <div class="page" id="page-ventas">
+        <div class="page-content">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon gold">💵</div>
+              </div>
+              <div class="stat-value" id="ventaTotal">$0</div>
+              <div class="stat-label">Ingresos Totales</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon green">📅</div>
+              </div>
+              <div class="stat-value" id="ventaMes">$0</div>
+              <div class="stat-label">Ingresos del Mes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header">
+                <div class="stat-icon blue">🛒</div>
+              </div>
+              <div class="stat-value" id="ventaCantidad">0</div>
+              <div class="stat-label">Ventas Realizadas</div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">💰</span>
+                Registro de Ventas
+              </div>
+              <div class="section-actions">
+                <div class="search-box">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" placeholder="Buscar venta..." oninput="filterTable('ventas', this.value)">
+                </div>
+                <button class="btn btn-primary" onclick="openModal('ventaModal')">
+                  <span>+</span> Nueva Venta
+                </button>
+              </div>
+            </div>
+            <div class="filter-chips">
+              <button class="filter-chip active" onclick="filterVentas('todas', this)">Todas</button>
+              <button class="filter-chip" onclick="filterVentas('pendiente', this)">🟡 Pendientes</button>
+              <button class="filter-chip" onclick="filterVentas('pagada', this)">🟢 Pagadas</button>
+              <button class="filter-chip" onclick="filterVentas('entregada', this)">📦 Entregadas</button>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Precio Unit.</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="ventaTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== CLIENTES ========== -->
+      <div class="page" id="page-clientes">
+        <div class="page-content">
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">👥</span>
+                Directorio de Clientes
+              </div>
+              <div class="section-actions">
+                <div class="search-box">
+                  <span class="search-icon">🔍</span>
+                  <input type="text" placeholder="Buscar cliente..." oninput="filterTable('clientes', this.value)">
+                </div>
+                <button class="btn btn-primary" onclick="openModal('clienteModal')">
+                  <span>+</span> Nuevo Cliente
+                </button>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Teléfono</th>
+                    <th>Email</th>
+                    <th>Dirección</th>
+                    <th>Compras</th>
+                    <th>Total</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="clienteTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== GALERÍA ========== -->
+      <div class="page" id="page-galeria">
+        <div class="page-content">
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="icon">📸</span>
+                Galería de Fotos
+              </div>
+              <div class="section-actions">
+                <button class="btn btn-primary" onclick="openCamera()">
+                  <span>📷</span> Tomar Foto
+                </button>
+                <button class="btn btn-secondary" onclick="uploadPhoto()">
+                  <span>📁</span> Subir Imagen
+                </button>
+              </div>
+            </div>
+            <div class="gallery-grid" id="galleryGrid">
+              <div class="empty-state" style="grid-column: 1/-1;">
+                <div class="icon">📷</div>
+                <p>No hay fotos. Toma una con la cámara o sube una imagen.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- FAB -->
+  <button class="fab" id="fab" onclick="onFabClick()">+</button>
+
+  <!-- ========== MODALS ========== -->
+
+  <!-- Modal: Apiario -->
+  <div class="modal-overlay" id="apiarioModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">🏡 <span id="apiarioModalTitle">Nuevo Apiario</span></div>
+        <button class="modal-close" onclick="closeModal('apiarioModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="apiarioId">
+        <div class="camera-section">
+          <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">Foto del Apiario</label>
+          <div class="camera-preview" id="apiarioPhotoPreview" onclick="captureForField('apiarioPhoto')">
+            <span class="icon">📷</span>
+            <span>Tomar foto o seleccionar imagen</span>
+          </div>
+          <input type="hidden" id="apiarioPhoto">
+          <div class="camera-actions">
+            <button class="btn btn-secondary btn-sm" onclick="captureForField('apiarioPhoto')">📷 Cámara</button>
+            <button class="btn btn-secondary btn-sm" onclick="uploadForField('apiarioPhoto')">📁 Galería</button>
+            <button class="btn btn-danger btn-sm" onclick="clearPhotoField('apiarioPhoto')" style="display:none" id="apiarioPhotoClear">✕ Quitar</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Nombre del Apiario *</label>
+          <input type="text" id="apiarioNombre" placeholder="Ej: Apiario El Roble">
+        </div>
+        <div class="form-group">
+          <label>Ubicación</label>
+          <input type="text" id="apiarioUbicacion" placeholder="Ej: Ruta 5, Km 23">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cantidad de Colmenas</label>
+            <input type="number" id="apiarioColmenas" placeholder="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Estado</label>
+            <select id="apiarioEstado">
+              <option value="activo">Activo</option>
+              <option value="inactivo">Inactivo</option>
+              <option value="mantenimiento">En Mantenimiento</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea id="apiarioNotas" placeholder="Observaciones del apiario..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('apiarioModal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveApiario()">Guardar Apiario</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cosecha -->
+  <div class="modal-overlay" id="cosechaModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">🍯 <span id="cosechaModalTitle">Nueva Cosecha</span></div>
+        <button class="modal-close" onclick="closeModal('cosechaModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cosechaId">
+        <div class="camera-section">
+          <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">Foto de la Cosecha</label>
+          <div class="camera-preview" id="cosechaPhotoPreview" onclick="captureForField('cosechaPhoto')">
+            <span class="icon">📷</span>
+            <span>Tomar foto o seleccionar imagen</span>
+          </div>
+          <input type="hidden" id="cosechaPhoto">
+          <div class="camera-actions">
+            <button class="btn btn-secondary btn-sm" onclick="captureForField('cosechaPhoto')">📷 Cámara</button>
+            <button class="btn btn-secondary btn-sm" onclick="uploadForField('cosechaPhoto')">📁 Galería</button>
+            <button class="btn btn-danger btn-sm" onclick="clearPhotoField('cosechaPhoto')" style="display:none" id="cosechaPhotoClear">✕ Quitar</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="cosechaFecha">
+          </div>
+          <div class="form-group">
+            <label>Apiario *</label>
+            <select id="cosechaApiario">
+              <option value="">Seleccionar...</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Producto *</label>
+            <select id="cosechaProducto">
+              <option value="miel">🍯 Miel</option>
+              <option value="cera">🕯️ Cera</option>
+              <option value="polen">🌼 Polen</option>
+              <option value="propoleo">💊 Propóleo</option>
+              <option value="jalea">👑 Jalea Real</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cantidad (kg) *</label>
+            <input type="number" id="cosechaCantidad" placeholder="0" step="0.1" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Calidad</label>
+          <select id="cosechaCalidad">
+            <option value="premium">⭐ Premium</option>
+            <option value="estandar" selected>✅ Estándar</option>
+            <option value="segunda">📌 Segunda</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea id="cosechaNotas" placeholder="Observaciones de la cosecha..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('cosechaModal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveCosecha()">Guardar Cosecha</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Venta -->
+  <div class="modal-overlay" id="ventaModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">💰 <span id="ventaModalTitle">Nueva Venta</span></div>
+        <button class="modal-close" onclick="closeModal('ventaModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="ventaId">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="ventaFecha">
+          </div>
+          <div class="form-group">
+            <label>Cliente *</label>
+            <select id="ventaCliente">
+              <option value="">Seleccionar...</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Producto *</label>
+            <select id="ventaProducto">
+              <option value="miel">🍯 Miel</option>
+              <option value="cera">🕯️ Cera</option>
+              <option value="polen">🌼 Polen</option>
+              <option value="propoleo">💊 Propóleo</option>
+              <option value="jalea">👑 Jalea Real</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cantidad (kg) *</label>
+            <input type="number" id="ventaCantidad" placeholder="0" step="0.1" min="0" oninput="calcVentaTotal()">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Precio Unitario ($) *</label>
+            <input type="number" id="ventaPrecio" placeholder="0" step="0.01" min="0" oninput="calcVentaTotal()">
+          </div>
+          <div class="form-group">
+            <label>Total</label>
+            <input type="text" id="ventaTotalCalc" readonly placeholder="$0.00" style="font-weight:700;color:var(--accent-gold);">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="ventaEstado">
+            <option value="pendiente">🟡 Pendiente</option>
+            <option value="pagada">🟢 Pagada</option>
+            <option value="entregada">📦 Entregada</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea id="ventaNotas" placeholder="Detalles de la venta..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('ventaModal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveVenta()">Guardar Venta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cliente -->
+  <div class="modal-overlay" id="clienteModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">👤 <span id="clienteModalTitle">Nuevo Cliente</span></div>
+        <button class="modal-close" onclick="closeModal('clienteModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="clienteId">
+        <div class="form-group">
+          <label>Nombre Completo *</label>
+          <input type="text" id="clienteNombre" placeholder="Nombre del cliente">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="tel" id="clienteTelefono" placeholder="+54 9 11...">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="clienteEmail" placeholder="correo@ejemplo.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Dirección</label>
+          <input type="text" id="clienteDireccion" placeholder="Dirección del cliente">
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea id="clienteNotas" placeholder="Observaciones del cliente..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('clienteModal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveCliente()">Guardar Cliente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cámara en vivo -->
+  <div class="modal-overlay" id="cameraModal">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <div class="modal-title">📷 Cámara</div>
+        <button class="modal-close" onclick="closeCameraModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0;">
+        <video id="cameraVideo" autoplay playsinline style="width:100%;display:block;background:#000;border-radius:0 0 var(--radius-lg) var(--radius-lg);"></video>
+        <canvas id="cameraCanvas" style="display:none;"></canvas>
+      </div>
+      <div class="modal-footer" style="justify-content:center;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="switchCameraFacing()">🔄 Girar</button>
+        <button class="btn btn-primary" onclick="takeSnapshot()" style="min-width:110px;">📸 Capturar</button>
+        <button class="btn btn-secondary" onclick="triggerNativeCameraFallback()">📱 Cámara Nativa</button>
+        <button class="btn btn-secondary" onclick="closeCameraModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar eliminación -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <div class="modal-title">⚠️ Confirmar</div>
+        <button class="modal-close" onclick="closeModal('deleteModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="confirm-dialog">
+          <div class="icon">🗑️</div>
+          <h3>¿Eliminar este registro?</h3>
+          <p>Esta acción no se puede deshacer.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancelar</button>
+        <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation (Android & Phone screens) -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-btn active" data-page="dashboard" onclick="navigateTo('dashboard')">
+      <span class="icon">📊</span>
+      <span>Inicio</span>
+    </button>
+    <button class="mobile-nav-btn" data-page="apiarios" onclick="navigateTo('apiarios')">
+      <span class="icon">🏡</span>
+      <span>Apiarios</span>
+    </button>
+    <button class="mobile-nav-btn" data-page="cosechas" onclick="navigateTo('cosechas')">
+      <span class="icon">🍯</span>
+      <span>Cosechas</span>
+    </button>
+    <button class="mobile-nav-btn" data-page="ventas" onclick="navigateTo('ventas')">
+      <span class="icon">💰</span>
+      <span>Ventas</span>
+    </button>
+    <button class="mobile-nav-btn" data-page="galeria" onclick="navigateTo('galeria')">
+      <span class="icon">📸</span>
+      <span>Fotos</span>
+    </button>
+  </nav>
+
+  <!-- Hidden inputs for file upload, direct camera and JSON import -->
+  <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+  <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none" onchange="handleFileSelect(event)">
+  <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImportFile(event)">
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js?v=1"></script>
+  <script src="app.js?v=3"></script>
+  <script src="sync.js?v=1"></script>
+</body>
+</html>
