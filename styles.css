@@ -1502,3 +1502,6 @@ tbody td {
 
 /* Evita que las tablas anchas ensanchen toda la página en el celular */
 .main-content, .page, .page-content { min-width: 0; }
+
+/* En el Dashboard no se muestra el botón + (no hay datos que ingresar ahí) */
+body:has(#page-dashboard.active) .fab { display: none !important; }
